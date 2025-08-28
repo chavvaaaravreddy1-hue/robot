@@ -1,0 +1,265 @@
+import React from 'react'
+import { create } from 'zustand'
+import { Canvas } from '@react-three/fiber'
+import { OrbitControls } from '@react-three/drei'
+import { Mesh } from 'three'
+
+/* === GAME DATA === */
+const ROBOT_MODELS_T3_T10 = [
+  { id: 'robot3', name: 'Scrap Knight' },
+  { id: 'robot4', name: 'Iron Claw' },
+  { id: 'robot5', name: 'Bolt Rager' },
+  { id: 'robot6', name: 'Rust Titan' },
+  { id: 'robot7', name: 'Junk Brawler' },
+  { id: 'robot8', name: 'Mecha Bruiser' },
+  { id: 'robot9', name: 'Steel Phantom' },
+  { id: 'robot10', name: 'War Golem' },
+]
+
+const CORE_REWARDS_T11_T20 = [
+  { id: 'core1', name: 'Brain Core', maxCoreHealth: 50, boost: { attack: 5, defense: 0, speed: 0 } },
+  { id: 'core2', name: 'Armor Core', maxCoreHealth: 70, boost: { attack: 0, defense: 7, speed: 0 } },
+  { id: 'core3', name: 'Speed Core', maxCoreHealth: 40, boost: { attack: 0, defense: 0, speed: 7 } },
+  { id: 'core4', name: 'Fusion Core', maxCoreHealth: 100, boost: { attack: 3, defense: 3, speed: 3 } },
+  { id: 'core5', name: 'Overdrive Core', maxCoreHealth: 60, boost: { attack: 10, defense: -2, speed: 2 } },
+  { id: 'core6', name: 'Titan Core', maxCoreHealth: 120, boost: { attack: 0, defense: 10, speed: -2 } },
+  { id: 'core7', name: 'Vortex Core', maxCoreHealth: 80, boost: { attack: 4, defense: 4, speed: 4 } },
+  { id: 'core8', name: 'Phantom Core', maxCoreHealth: 50, boost: { attack: 6, defense: 2, speed: 6 } },
+  { id: 'core9', name: 'Nano Core', maxCoreHealth: 30, boost: { attack: 2, defense: 2, speed: 10 } },
+  { id: 'core10', name: 'Omega Core', maxCoreHealth: 200, boost: { attack: 8, defense: 8, speed: 8 } },
+]
+
+function generateTournamentOpponent(level: number) {
+  const coreIdx = (level - 11) % CORE_REWARDS_T11_T20.length
+  return {
+    id: `opponent${level}`,
+    name: `Tournament Bot ${level}`,
+    health: 50 + level * 10,
+    maxHealth: 50 + level * 10,
+    attack: 5 + level,
+    defense: 3 + level,
+    speed: 3 + Math.floor(level / 2),
+    core: level > 10 ? CORE_REWARDS_T11_T20[coreIdx] : undefined,
+    coreHealth: level > 10 ? CORE_REWARDS_T11_T20[coreIdx].maxCoreHealth : 0,
+    maxCoreHealth: level > 10 ? CORE_REWARDS_T11_T20[coreIdx].maxCoreHealth : 0,
+  }
+}
+
+/* === STORE === */
+interface Core {
+  id: string
+  name: string
+  maxCoreHealth: number
+  boost: { attack: number; defense: number; speed: number }
+}
+interface Robot {
+  id: string
+  name: string
+  health: number
+  maxHealth: number
+  attack: number
+  defense: number
+  speed: number
+  core?: Core
+  coreHealth?: number
+  maxCoreHealth?: number
+}
+interface GameState {
+  playerRobot: Robot | null
+  opponent: Robot | null
+  tournamentLevel: number
+  gameStarted: boolean
+  coresUnlocked: boolean
+  rewards: any[]
+  startGame: () => void
+  initializeTournament: (level: number) => void
+  executePlayerTurn: () => void
+  executeOpponentTurn: () => void
+}
+
+const useGameStore = create<GameState>((set, get) => ({
+  playerRobot: null,
+  opponent: null,
+  tournamentLevel: 1,
+  gameStarted: false,
+  coresUnlocked: false,
+  rewards: [],
+
+  startGame: () => {
+    set({
+      playerRobot: {
+        id: 'player1',
+        name: 'Junk Case',
+        health: 100,
+        maxHealth: 100,
+        attack: 10,
+        defense: 5,
+        speed: 5,
+        core: undefined,
+        coreHealth: 0,
+        maxCoreHealth: 0,
+      },
+      gameStarted: true,
+    })
+  },
+
+  initializeTournament: (level: number) => {
+    const opponent = generateTournamentOpponent(level)
+    set({
+      tournamentLevel: level,
+      opponent,
+      coresUnlocked: level > 10 ? true : get().coresUnlocked,
+    })
+  },
+
+  executePlayerTurn: () => {
+    const { playerRobot, opponent } = get()
+    if (!playerRobot || !opponent) return
+
+    const damage = Math.max(1, playerRobot.attack - opponent.defense)
+    opponent.health -= damage
+
+    if (opponent.health <= opponent.maxHealth * 0.3 && opponent.coreHealth) {
+      opponent.coreHealth -= Math.ceil(damage * 0.2)
+    }
+
+    if (opponent.health <= 0 || (opponent.coreHealth !== undefined && opponent.coreHealth <= 0)) {
+      let reward: any = null
+      const lvl = get().tournamentLevel
+      if (lvl >= 2 && lvl <= 10) reward = ROBOT_MODELS_T3_T10[lvl - 2]
+      else if (lvl > 10) reward = CORE_REWARDS_T11_T20[lvl - 11]
+
+      set(state => ({
+        opponent: null,
+        rewards: reward ? [...state.rewards, reward] : state.rewards,
+      }))
+    } else {
+      set({ opponent })
+    }
+  },
+
+  executeOpponentTurn: () => {
+    const { playerRobot, opponent } = get()
+    if (!playerRobot || !opponent) return
+
+    const damage = Math.max(1, opponent.attack - playerRobot.defense)
+    playerRobot.health -= damage
+
+    if (playerRobot.health <= playerRobot.maxHealth * 0.3 && playerRobot.coreHealth) {
+      playerRobot.coreHealth -= Math.ceil(damage * 0.2)
+    }
+
+    if (playerRobot.health <= 0 || (playerRobot.coreHealth !== undefined && playerRobot.coreHealth <= 0)) {
+      set({ playerRobot: null, opponent: null, gameStarted: false })
+    } else {
+      set({ playerRobot })
+    }
+  },
+}))
+
+/* === COMPONENTS === */
+const Bar: React.FC<{ label: string; current: number; max: number; color: string }> = ({
+  label,
+  current,
+  max,
+  color,
+}) => {
+  const percent = Math.max(0, (current / max) * 100)
+  return (
+    <div style={{ marginBottom: '5px' }}>
+      <div>{label}: {current}/{max}</div>
+      <div style={{ width: '200px', height: '15px', border: '1px solid #333' }}>
+        <div style={{ width: `${percent}%`, height: '100%', background: color }} />
+      </div>
+    </div>
+  )
+}
+const HealthBar = ({ health, maxHealth, coreHealth, maxCoreHealth }: any) => (
+  <div>
+    <Bar label="Health" current={health} max={maxHealth} color="red" />
+    {maxCoreHealth > 0 && <Bar label="Core" current={coreHealth} max={maxCoreHealth} color="blue" />}
+  </div>
+)
+
+const Robot3D: React.FC<{ isPlayer?: boolean }> = ({ isPlayer }) => {
+  const robot = useGameStore(s => (isPlayer ? s.playerRobot : s.opponent))
+  const meshRef = React.useRef<Mesh>(null)
+  React.useEffect(() => { if (meshRef.current) meshRef.current.rotation.y = 0 }, [robot?.id])
+  if (!robot) return null
+  return (
+    <group>
+      <mesh ref={meshRef}>
+        <boxGeometry args={[2, 3, 1]} />
+        <meshStandardMaterial color={isPlayer ? 'skyblue' : 'crimson'} />
+      </mesh>
+      {robot.core && (
+        <mesh position={[0, 0.5, 0]}>
+          <sphereGeometry args={[0.4, 32, 32]} />
+          <meshStandardMaterial
+            emissive={
+              robot.coreHealth! > robot.maxCoreHealth! * 0.5
+                ? 'green'
+                : robot.coreHealth! > robot.maxCoreHealth! * 0.2
+                ? 'yellow'
+                : 'red'
+            }
+            emissiveIntensity={2}
+            color="black"
+          />
+        </mesh>
+      )}
+    </group>
+  )
+}
+
+/* === MAIN APP === */
+export default function App() {
+  const { playerRobot, opponent, startGame, initializeTournament, executePlayerTurn, executeOpponentTurn } =
+    useGameStore()
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <h1>🤖 Junkyard Arena</h1>
+
+      {!playerRobot && <button onClick={startGame}>Start Game</button>}
+      {playerRobot && !opponent && (
+        <button onClick={() => initializeTournament(1)}>Enter Tournament</button>
+      )}
+
+      <div style={{ display: 'flex', gap: '100px', marginTop: '20px' }}>
+        <div>
+          <h3>Player</h3>
+          {playerRobot && (
+            <>
+              <HealthBar {...playerRobot} />
+              <Canvas style={{ width: 300, height: 300 }}>
+                <ambientLight />
+                <OrbitControls />
+                <Robot3D isPlayer />
+              </Canvas>
+            </>
+          )}
+        </div>
+        <div>
+          <h3>Opponent</h3>
+          {opponent && (
+            <>
+              <HealthBar {...opponent} />
+              <Canvas style={{ width: 300, height: 300 }}>
+                <ambientLight />
+                <OrbitControls />
+                <Robot3D />
+              </Canvas>
+            </>
+          )}
+        </div>
+      </div>
+
+      {opponent && (
+        <div style={{ marginTop: '20px' }}>
+          <button onClick={executePlayerTurn}>Attack</button>
+          <button onClick={executeOpponentTurn}>Opponent Turn</button>
+        </div>
+      )}
+    </div>
+  )
+}
