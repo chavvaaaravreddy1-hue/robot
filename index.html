@@ -1,265 +1,650 @@
-import React from 'react'
-import { create } from 'zustand'
-import { Canvas } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
-import { Mesh } from 'three'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robot Battle</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+        body {
+            background-color: #0d1117;
+            color: #e6e6e6;
+            font-family: 'Orbitron', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            flex-direction: column;
+            text-align: center;
+        }
+        canvas {
+            background-color: #010409;
+            border: 2px solid #238636;
+            border-radius: 12px;
+            box-shadow: 0 0 15px #238636;
+            touch-action: none; /* Disable default touch actions */
+        }
+        .ui-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            align-items: center;
+            padding: 20px;
+            background: rgba(13, 17, 23, 0.9);
+            border: 2px solid #238636;
+            border-radius: 12px;
+            box-shadow: 0 0 15px #238636;
+            min-width: 300px;
+            z-index: 2; /* Ensure it's above the canvas */
+        }
+        .hidden {
+            display: none;
+        }
+        h1 {
+            color: #238636;
+            text-shadow: 0 0 8px #238636;
+        }
+        button {
+            background-color: #238636;
+            color: #e6e6e6;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1em;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: background-color 0.3s, transform 0.2s;
+            box-shadow: 0 4px #1a5c2b;
+        }
+        button:hover {
+            background-color: #2ea043;
+            transform: translateY(-2px);
+            box-shadow: 0 6px #1a5c2b;
+        }
+        button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px #1a5c2b;
+        }
+        .progress-bar-container {
+            width: 80%;
+            height: 25px;
+            background-color: #1a1a1a;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid #238636;
+        }
+        .progress-bar {
+            height: 100%;
+            width: 0;
+            background: linear-gradient(90deg, #238636, #2ea043);
+            transition: width 0.5s ease-in-out;
+            text-align: center;
+            line-height: 25px;
+            color: white;
+            font-weight: bold;
+        }
+        .health-bar-container {
+            width: 150px;
+            height: 15px;
+            background-color: #333;
+            border-radius: 8px;
+            border: 2px solid #fff;
+            overflow: hidden;
+            box-shadow: 0 0 5px #fff;
+        }
+        .health-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #ff4c4c, #e60000);
+            transition: width 0.2s linear;
+        }
+        .health-bar.player1 {
+            background: linear-gradient(90deg, #4cff4c, #00e600);
+        }
+        .modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(13, 17, 23, 0.95);
+            border: 2px solid #238636;
+            border-radius: 12px;
+            box-shadow: 0 0 15px #238636;
+            padding: 30px;
+            z-index: 10;
+            text-align: center;
+            max-width: 90%;
+        }
+        .input-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        input[type="text"] {
+            padding: 10px;
+            border: 2px solid #238636;
+            background-color: #010409;
+            color: #e6e6e6;
+            border-radius: 8px;
+            font-family: 'Orbitron', sans-serif;
+            text-align: center;
+        }
+        .question-box {
+            padding: 20px;
+            background: rgba(13, 17, 23, 0.9);
+            border: 2px solid #238636;
+            border-radius: 12px;
+            margin-top: 20px;
+        }
+        .question-box p {
+            font-size: 1.2em;
+            margin-bottom: 20px;
+        }
+        .question-box button {
+            width: 100%;
+            margin-top: 10px;
+        }
+        #high-scores-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        #high-scores-list li {
+            background: #1a1a1a;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #238636;
+        }
 
-/* === GAME DATA === */
-const ROBOT_MODELS_T3_T10 = [
-  { id: 'robot3', name: 'Scrap Knight' },
-  { id: 'robot4', name: 'Iron Claw' },
-  { id: 'robot5', name: 'Bolt Rager' },
-  { id: 'robot6', name: 'Rust Titan' },
-  { id: 'robot7', name: 'Junk Brawler' },
-  { id: 'robot8', name: 'Mecha Bruiser' },
-  { id: 'robot9', name: 'Steel Phantom' },
-  { id: 'robot10', name: 'War Golem' },
-]
-
-const CORE_REWARDS_T11_T20 = [
-  { id: 'core1', name: 'Brain Core', maxCoreHealth: 50, boost: { attack: 5, defense: 0, speed: 0 } },
-  { id: 'core2', name: 'Armor Core', maxCoreHealth: 70, boost: { attack: 0, defense: 7, speed: 0 } },
-  { id: 'core3', name: 'Speed Core', maxCoreHealth: 40, boost: { attack: 0, defense: 0, speed: 7 } },
-  { id: 'core4', name: 'Fusion Core', maxCoreHealth: 100, boost: { attack: 3, defense: 3, speed: 3 } },
-  { id: 'core5', name: 'Overdrive Core', maxCoreHealth: 60, boost: { attack: 10, defense: -2, speed: 2 } },
-  { id: 'core6', name: 'Titan Core', maxCoreHealth: 120, boost: { attack: 0, defense: 10, speed: -2 } },
-  { id: 'core7', name: 'Vortex Core', maxCoreHealth: 80, boost: { attack: 4, defense: 4, speed: 4 } },
-  { id: 'core8', name: 'Phantom Core', maxCoreHealth: 50, boost: { attack: 6, defense: 2, speed: 6 } },
-  { id: 'core9', name: 'Nano Core', maxCoreHealth: 30, boost: { attack: 2, defense: 2, speed: 10 } },
-  { id: 'core10', name: 'Omega Core', maxCoreHealth: 200, boost: { attack: 8, defense: 8, speed: 8 } },
-]
-
-function generateTournamentOpponent(level: number) {
-  const coreIdx = (level - 11) % CORE_REWARDS_T11_T20.length
-  return {
-    id: `opponent${level}`,
-    name: `Tournament Bot ${level}`,
-    health: 50 + level * 10,
-    maxHealth: 50 + level * 10,
-    attack: 5 + level,
-    defense: 3 + level,
-    speed: 3 + Math.floor(level / 2),
-    core: level > 10 ? CORE_REWARDS_T11_T20[coreIdx] : undefined,
-    coreHealth: level > 10 ? CORE_REWARDS_T11_T20[coreIdx].maxCoreHealth : 0,
-    maxCoreHealth: level > 10 ? CORE_REWARDS_T11_T20[coreIdx].maxCoreHealth : 0,
-  }
-}
-
-/* === STORE === */
-interface Core {
-  id: string
-  name: string
-  maxCoreHealth: number
-  boost: { attack: number; defense: number; speed: number }
-}
-interface Robot {
-  id: string
-  name: string
-  health: number
-  maxHealth: number
-  attack: number
-  defense: number
-  speed: number
-  core?: Core
-  coreHealth?: number
-  maxCoreHealth?: number
-}
-interface GameState {
-  playerRobot: Robot | null
-  opponent: Robot | null
-  tournamentLevel: number
-  gameStarted: boolean
-  coresUnlocked: boolean
-  rewards: any[]
-  startGame: () => void
-  initializeTournament: (level: number) => void
-  executePlayerTurn: () => void
-  executeOpponentTurn: () => void
-}
-
-const useGameStore = create<GameState>((set, get) => ({
-  playerRobot: null,
-  opponent: null,
-  tournamentLevel: 1,
-  gameStarted: false,
-  coresUnlocked: false,
-  rewards: [],
-
-  startGame: () => {
-    set({
-      playerRobot: {
-        id: 'player1',
-        name: 'Junk Case',
-        health: 100,
-        maxHealth: 100,
-        attack: 10,
-        defense: 5,
-        speed: 5,
-        core: undefined,
-        coreHealth: 0,
-        maxCoreHealth: 0,
-      },
-      gameStarted: true,
-    })
-  },
-
-  initializeTournament: (level: number) => {
-    const opponent = generateTournamentOpponent(level)
-    set({
-      tournamentLevel: level,
-      opponent,
-      coresUnlocked: level > 10 ? true : get().coresUnlocked,
-    })
-  },
-
-  executePlayerTurn: () => {
-    const { playerRobot, opponent } = get()
-    if (!playerRobot || !opponent) return
-
-    const damage = Math.max(1, playerRobot.attack - opponent.defense)
-    opponent.health -= damage
-
-    if (opponent.health <= opponent.maxHealth * 0.3 && opponent.coreHealth) {
-      opponent.coreHealth -= Math.ceil(damage * 0.2)
-    }
-
-    if (opponent.health <= 0 || (opponent.coreHealth !== undefined && opponent.coreHealth <= 0)) {
-      let reward: any = null
-      const lvl = get().tournamentLevel
-      if (lvl >= 2 && lvl <= 10) reward = ROBOT_MODELS_T3_T10[lvl - 2]
-      else if (lvl > 10) reward = CORE_REWARDS_T11_T20[lvl - 11]
-
-      set(state => ({
-        opponent: null,
-        rewards: reward ? [...state.rewards, reward] : state.rewards,
-      }))
-    } else {
-      set({ opponent })
-    }
-  },
-
-  executeOpponentTurn: () => {
-    const { playerRobot, opponent } = get()
-    if (!playerRobot || !opponent) return
-
-    const damage = Math.max(1, opponent.attack - playerRobot.defense)
-    playerRobot.health -= damage
-
-    if (playerRobot.health <= playerRobot.maxHealth * 0.3 && playerRobot.coreHealth) {
-      playerRobot.coreHealth -= Math.ceil(damage * 0.2)
-    }
-
-    if (playerRobot.health <= 0 || (playerRobot.coreHealth !== undefined && playerRobot.coreHealth <= 0)) {
-      set({ playerRobot: null, opponent: null, gameStarted: false })
-    } else {
-      set({ playerRobot })
-    }
-  },
-}))
-
-/* === COMPONENTS === */
-const Bar: React.FC<{ label: string; current: number; max: number; color: string }> = ({
-  label,
-  current,
-  max,
-  color,
-}) => {
-  const percent = Math.max(0, (current / max) * 100)
-  return (
-    <div style={{ marginBottom: '5px' }}>
-      <div>{label}: {current}/{max}</div>
-      <div style={{ width: '200px', height: '15px', border: '1px solid #333' }}>
-        <div style={{ width: `${percent}%`, height: '100%', background: color }} />
-      </div>
+        .battle-ui {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 600px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1; /* Above canvas, below UI overlay */
+        }
+        .battle-ui-side {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        .health-bar-bg {
+            width: 200px;
+            height: 25px;
+            background: #333;
+            border: 2px solid #238636;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+        .player-health-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #4cff4c, #00e600);
+            transition: width 0.5s ease-in-out;
+        }
+        .ai-health-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff4c4c, #e60000);
+            transition: width 0.5s ease-in-out;
+        }
+        .battle-ui p {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #238636;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
     </div>
-  )
-}
-const HealthBar = ({ health, maxHealth, coreHealth, maxCoreHealth }: any) => (
-  <div>
-    <Bar label="Health" current={health} max={maxHealth} color="red" />
-    {maxCoreHealth > 0 && <Bar label="Core" current={coreHealth} max={maxCoreHealth} color="blue" />}
-  </div>
-)
 
-const Robot3D: React.FC<{ isPlayer?: boolean }> = ({ isPlayer }) => {
-  const robot = useGameStore(s => (isPlayer ? s.playerRobot : s.opponent))
-  const meshRef = React.useRef<Mesh>(null)
-  React.useEffect(() => { if (meshRef.current) meshRef.current.rotation.y = 0 }, [robot?.id])
-  if (!robot) return null
-  return (
-    <group>
-      <mesh ref={meshRef}>
-        <boxGeometry args={[2, 3, 1]} />
-        <meshStandardMaterial color={isPlayer ? 'skyblue' : 'crimson'} />
-      </mesh>
-      {robot.core && (
-        <mesh position={[0, 0.5, 0]}>
-          <sphereGeometry args={[0.4, 32, 32]} />
-          <meshStandardMaterial
-            emissive={
-              robot.coreHealth! > robot.maxCoreHealth! * 0.5
-                ? 'green'
-                : robot.coreHealth! > robot.maxCoreHealth! * 0.2
-                ? 'yellow'
-                : 'red'
+    <div id="battle-ui" class="battle-ui hidden">
+        <div class="battle-ui-side">
+            <p>Player</p>
+            <div class="health-bar-bg">
+                <div id="playerHealthBar" class="player-health-bar"></div>
+            </div>
+        </div>
+        <div class="battle-ui-side">
+            <p>AI Bot</p>
+            <div class="health-bar-bg">
+                <div id="aiHealthBar" class="ai-health-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="ui-overlay" class="ui-container">
+        <div id="main-menu" class="screen">
+            <h1>Robot Battle</h1>
+            <p>Ready to fight?</p>
+            <button id="newGameBtn">New Game</button>
+        </div>
+
+        <div id="quiz-menu" class="screen hidden">
+            <h1>Problem Solving</h1>
+            <div id="robotProgressContainer" class="progress-bar-container">
+                <div id="robotProgressBar" class="progress-bar"></div>
+            </div>
+            <div id="questionBox" class="question-box">
+                <p id="questionText"></p>
+                <button id="optionA" class="option-btn"></button>
+                <button id="optionB" class="option-btn"></button>
+                <button id="optionC" class="option-btn"></button>
+                <button id="optionD" class="option-btn"></button>
+            </div>
+        </div>
+
+        <div id="battle-menu" class="screen hidden">
+            <h1>FIGHT!</h1>
+        </div>
+
+        <div id="game-over-menu" class="screen hidden">
+            <h1 id="gameOverText"></h1>
+            <p id="finalHealthText"></p>
+            <button id="playAgainBtn">Play Again</button>
+        </div>
+    </div>
+
+    <div id="alert-modal" class="modal hidden">
+        <p id="alert-message"></p>
+        <button id="alert-close-btn">OK</button>
+    </div>
+
+    <script>
+        // Game State and Variables
+        let game = {
+            state: 'menu'
+        };
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const uiOverlay = document.getElementById('ui-overlay');
+        const battleUI = document.getElementById('battle-ui');
+        const screens = document.querySelectorAll('.screen');
+        const alertModal = document.getElementById('alert-modal');
+        const alertMessage = document.getElementById('alert-message');
+        const alertCloseBtn = document.getElementById('alert-close-btn');
+        
+        // UI elements
+        const newGameBtn = document.getElementById('newGameBtn');
+        const questionText = document.getElementById('questionText');
+        const optionBtns = document.querySelectorAll('.option-btn');
+        const progressBar = document.getElementById('robotProgressBar');
+        const gameOverText = document = document.getElementById('gameOverText');
+        const finalHealthText = document.getElementById('finalHealthText');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+
+        const playerHealthBar = document.getElementById('playerHealthBar');
+        const aiHealthBar = document.getElementById('aiHealthBar');
+        
+        const ROBOT_HEIGHT = 100;
+        const ROBOT_WIDTH = 60;
+        const GROUND_Y_OFFSET = 0.8; // 80% of canvas height
+
+        const quizQuestions = [
+            {
+                question: "Math: What is the sum of the prime numbers between 10 and 20?",
+                options: ["28", "37", "41", "48"],
+                answer: "41",
+                part: "left_arm"
+            },
+            {
+                question: "Science: What process do plants use to make their own food?",
+                options: ["Respiration", "Photosynthesis", "Digestion", "Transpiration"],
+                answer: "Photosynthesis",
+                part: "right_arm"
+            },
+            {
+                question: "Math: A rectangular field is 15m long and 8m wide. What is its perimeter?",
+                options: ["23m", "46m", "120m", "42m"],
+                answer: "46m",
+                part: "left_leg"
+            },
+            {
+                question: "Science: Which state of matter has a fixed shape and volume?",
+                options: ["Solid", "Liquid", "Gas", "Plasma"],
+                answer: "Solid",
+                part: "right_leg"
+            },
+            {
+                question: "Math: Find the value of 5 x (12 - 7) + 3.",
+                options: ["28", "38", "50", "13"],
+                answer: "28",
+                part: "torso"
+            },
+            {
+                question: "Science: What is the main source of energy for the water cycle?",
+                options: ["Wind", "Moonlight", "Sunlight", "Gravity"],
+                answer: "Sunlight",
+                part: "head"
+            },
+        ];
+
+        let currentQuestionIndex = 0;
+        const partsToComplete = quizQuestions.length;
+        
+        const PLAYER_STATE = {
+            id: '',
+            x: 0,
+            y: 0,
+            health: 100,
+            readiness: 0,
+            parts: [],
+            isAttacking: false,
+            lastAttackTime: 0,
+            yVelocity: 0,
+            isJumping: false,
+            isHit: false,
+            hitTimer: null
+        };
+
+        let player1 = {...PLAYER_STATE, id: 'player1'};
+        let aiBot = {...PLAYER_STATE, id: 'aiBot'};
+
+        const keys = {};
+
+        function showScreen(screenId) {
+            screens.forEach(screen => screen.classList.add('hidden'));
+            document.getElementById(screenId).classList.remove('hidden');
+            
+            // Manage UI visibility based on game state
+            if (screenId === 'battle-menu') {
+                uiOverlay.classList.add('hidden');
+                battleUI.classList.remove('hidden');
+            } else {
+                uiOverlay.classList.remove('hidden');
+                battleUI.classList.add('hidden');
             }
-            emissiveIntensity={2}
-            color="black"
-          />
-        </mesh>
-      )}
-    </group>
-  )
-}
+        }
+        
+        function showAlert(message) {
+            alertMessage.textContent = message;
+            alertModal.classList.remove('hidden');
+        }
 
-/* === MAIN APP === */
-export default function App() {
-  const { playerRobot, opponent, startGame, initializeTournament, executePlayerTurn, executeOpponentTurn } =
-    useGameStore()
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <h1>🤖 Junkyard Arena</h1>
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            const aspectRatio = 16 / 9;
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
 
-      {!playerRobot && <button onClick={startGame}>Start Game</button>}
-      {playerRobot && !opponent && (
-        <button onClick={() => initializeTournament(1)}>Enter Tournament</button>
-      )}
+            if (screenWidth / screenHeight > aspectRatio) {
+                canvas.height = screenHeight * 0.8;
+                canvas.width = canvas.height * aspectRatio;
+            } else {
+                canvas.width = screenWidth * 0.9;
+                canvas.height = canvas.width / aspectRatio;
+            }
 
-      <div style={{ display: 'flex', gap: '100px', marginTop: '20px' }}>
-        <div>
-          <h3>Player</h3>
-          {playerRobot && (
-            <>
-              <HealthBar {...playerRobot} />
-              <Canvas style={{ width: 300, height: 300 }}>
-                <ambientLight />
-                <OrbitControls />
-                <Robot3D isPlayer />
-              </Canvas>
-            </>
-          )}
-        </div>
-        <div>
-          <h3>Opponent</h3>
-          {opponent && (
-            <>
-              <HealthBar {...opponent} />
-              <Canvas style={{ width: 300, height: 300 }}>
-                <ambientLight />
-                <OrbitControls />
-                <Robot3D />
-              </Canvas>
-            </>
-          )}
-        </div>
-      </div>
+            player1.x = canvas.width / 4;
+            aiBot.x = canvas.width * 3 / 4;
+            player1.y = canvas.height * GROUND_Y_OFFSET - ROBOT_HEIGHT;
+            aiBot.y = canvas.height * GROUND_Y_OFFSET - ROBOT_HEIGHT;
+        }
 
-      {opponent && (
-        <div style={{ marginTop: '20px' }}>
-          <button onClick={executePlayerTurn}>Attack</button>
-          <button onClick={executeOpponentTurn}>Opponent Turn</button>
-        </div>
-      )}
-    </div>
-  )
-}
+        function startGame() {
+            game.state = 'quiz';
+            resetGame();
+            showScreen('quiz-menu');
+            loadQuestion();
+        }
+
+        function updateHealthBars() {
+            playerHealthBar.style.width = `${player1.health}%`;
+            aiHealthBar.style.width = `${aiBot.health}%`;
+        }
+
+        // This function loads the next question from the quizQuestions array.
+        function loadQuestion() {
+            if (currentQuestionIndex < quizQuestions.length) {
+                const q = quizQuestions[currentQuestionIndex];
+                questionText.textContent = q.question;
+                
+                const options = [...q.options];
+                options.sort(() => Math.random() - 0.5);
+
+                // Populate the buttons with the shuffled options
+                for(let i = 0; i < optionBtns.length; i++) {
+                    optionBtns[i].textContent = options[i];
+                }
+            } else {
+                player1.readiness = 100;
+                aiBot.readiness = 100;
+                game.state = 'battle';
+                showAlert("Your robot is 100% ready! Entering the fighting arena!");
+                setTimeout(() => {
+                    showScreen('battle-menu');
+                    updateHealthBars();
+                }, 2000);
+            }
+        }
+
+        function checkAnswer(selectedAnswer) {
+            const q = quizQuestions[currentQuestionIndex];
+            if (selectedAnswer === q.answer) {
+                showAlert("Correct! You earned a robot part!");
+                player1.parts.push(q.part);
+                player1.readiness = Math.round((player1.parts.length / partsToComplete) * 100);
+                progressBar.style.width = `${player1.readiness}%`;
+                progressBar.textContent = `${player1.readiness}% ready`;
+                currentQuestionIndex++;
+                if (currentQuestionIndex < quizQuestions.length) {
+                    setTimeout(loadQuestion, 1500);
+                } else {
+                    loadQuestion();
+                }
+            } else {
+                showAlert("Incorrect. Try again!");
+            }
+        }
+        
+        function drawRobot(p) {
+            ctx.fillStyle = p.isHit ? '#e60000' : (p.id === 'player1' ? '#238636' : '#2ea043');
+            
+            const bodyY = p.y;
+            const bodyX = p.x;
+
+            ctx.fillRect(bodyX, bodyY, ROBOT_WIDTH, ROBOT_HEIGHT * 0.4);
+            ctx.fillRect(bodyX + ROBOT_WIDTH / 4, bodyY - 30, ROBOT_WIDTH / 2, 30);
+            
+            const punchOffset = p.isAttacking ? 20 : 0;
+
+            if (p.parts.includes("left_arm")) {
+                ctx.fillRect(bodyX - 20 - punchOffset, bodyY + 10, 20, 50);
+            }
+            if (p.parts.includes("right_arm")) {
+                ctx.fillRect(bodyX + ROBOT_WIDTH + punchOffset, bodyY + 10, 20, 50);
+            }
+            if (p.parts.includes("left_leg")) {
+                ctx.fillRect(bodyX + 5, bodyY + ROBOT_HEIGHT * 0.4, 20, 50);
+            }
+            if (p.parts.includes("right_leg")) {
+                ctx.fillRect(bodyX + ROBOT_WIDTH - 25, bodyY + ROBOT_HEIGHT * 0.4, 20, 50);
+            }
+            if (p.parts.includes("torso")) {
+                ctx.fillRect(bodyX - 10, bodyY + ROBOT_HEIGHT * 0.4 - 5, ROBOT_WIDTH + 20, 10);
+            }
+            if (p.parts.includes("head")) {
+                ctx.fillRect(bodyX + 15, bodyY - 40, 30, 10);
+            }
+        }
+
+        function handleInput(p) {
+            const speed = 5;
+            const jumpPower = -15;
+            const groundY = canvas.height * GROUND_Y_OFFSET - ROBOT_HEIGHT;
+
+            if (keys['ArrowLeft']) {
+                p.x -= speed;
+            }
+            if (keys['ArrowRight']) {
+                p.x += speed;
+            }
+            if (keys['ArrowUp'] && !p.isJumping) {
+                p.yVelocity = jumpPower;
+                p.isJumping = true;
+            }
+            p.x = Math.max(0, Math.min(canvas.width - ROBOT_WIDTH, p.x));
+            
+            if (p.isJumping) {
+                p.y += p.yVelocity;
+                p.yVelocity += 0.5; // Gravity
+            }
+
+            if (p.y >= groundY) {
+                p.y = groundY;
+                p.isJumping = false;
+                p.yVelocity = 0;
+            }
+            
+            if (keys[' '] && Date.now() - p.lastAttackTime > 500) {
+                p.isAttacking = true;
+                p.lastAttackTime = Date.now();
+                setTimeout(() => p.isAttacking = false, 100);
+            }
+        }
+
+        function handleAI() {
+            const player = player1;
+            const ai = aiBot;
+            const distance = player.x - ai.x;
+            const groundY = canvas.height * GROUND_Y_OFFSET - ROBOT_HEIGHT;
+
+            if (ai.readiness < 100) {
+                ai.readiness += 0.1;
+                const parts = Math.floor(ai.readiness / (100 / partsToComplete));
+                ai.parts = quizQuestions.slice(0, parts).map(q => q.part);
+            }
+            
+            if (game.state === 'battle') {
+                if (Math.abs(distance) > 100) {
+                    ai.x += distance > 0 ? 2 : -2;
+                } else {
+                    if (Date.now() - ai.lastAttackTime > 1000) {
+                        ai.isAttacking = true;
+                        ai.lastAttackTime = Date.now();
+                        setTimeout(() => ai.isAttacking = false, 100);
+                    }
+                }
+                
+                if (Math.random() < 0.005 && !ai.isJumping) {
+                    ai.yVelocity = -15;
+                    ai.isJumping = true;
+                }
+
+                if (ai.isJumping) {
+                    ai.y += ai.yVelocity;
+                    ai.yVelocity += 0.5;
+                }
+
+                if (ai.y >= groundY) {
+                    ai.y = groundY;
+                    ai.isJumping = false;
+                    ai.yVelocity = 0;
+                }
+                
+                ai.x = Math.max(0, Math.min(canvas.width - ROBOT_WIDTH, ai.x));
+            }
+        }
+
+        function checkCollision(p1, p2) {
+            const punchRange = 100;
+            if (p1.isAttacking && Date.now() - p1.lastAttackTime < 100) {
+                if (Math.abs(p1.x - p2.x) < punchRange && Math.abs(p1.y - p2.y) < ROBOT_HEIGHT) {
+                    p2.health -= 10;
+                    p2.isHit = true;
+                    // Knockback effect
+                    p2.x += (p1.x > p2.x) ? -10 : 10;
+                    if (p2.hitTimer) clearTimeout(p2.hitTimer);
+                    p2.hitTimer = setTimeout(() => p2.isHit = false, 200);
+                    updateHealthBars();
+                }
+            }
+        }
+
+        function checkGameOver() {
+            if (player1.health <= 0 || aiBot.health <= 0) {
+                game.state = 'over';
+                showScreen('game-over-menu');
+                if (player1.health <= 0) {
+                    gameOverText.textContent = `You Lost! The AI Bot won!`;
+                } else {
+                    gameOverText.textContent = `You Win! The AI Bot is defeated!`;
+                }
+                finalHealthText.textContent = `Final Health: You - ${Math.max(0, player1.health)}%, AI Bot - ${Math.max(0, aiBot.health)}%`;
+            }
+        }
+
+        function resetGame() {
+            game.state = 'menu';
+            Object.assign(player1, PLAYER_STATE, { id: 'player1' });
+            Object.assign(aiBot, PLAYER_STATE, { id: 'aiBot' });
+            currentQuestionIndex = 0;
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0% ready';
+            updateHealthBars();
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (game.state === 'battle') {
+                handleInput(player1);
+                handleAI();
+                checkCollision(player1, aiBot);
+                checkCollision(aiBot, player1);
+
+                drawRobot(player1);
+                drawRobot(aiBot);
+                
+                checkGameOver();
+            }
+        }
+        
+        function setupEventListeners() {
+            newGameBtn.addEventListener('click', startGame);
+            
+            optionBtns.forEach(btn => btn.addEventListener('click', (e) => checkAnswer(e.target.textContent)));
+            
+            alertCloseBtn.addEventListener('click', () => alertModal.classList.add('hidden'));
+
+            playAgainBtn.addEventListener('click', () => {
+                resetGame();
+                showScreen('main-menu');
+            });
+
+            document.addEventListener('keydown', (e) => {
+                keys[e.key] = true;
+            });
+            document.addEventListener('keyup', (e) => {
+                keys[e.key] = false;
+            });
+
+            window.addEventListener('resize', resizeCanvas);
+            
+            resizeCanvas();
+            animate();
+        }
+
+        window.onload = setupEventListeners;
+    </script>
+</body>
+</html>
