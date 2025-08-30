@@ -255,7 +255,7 @@
                 <div id="robotProgressBar" class="progress-bar"></div>
             </div>
             <div id="questionBox" class="question-box">
-                <p id="questionText"></p>
+                <p id="questionText">Loading questions...</p>
                 <button id="optionA" class="option-btn"></button>
                 <button id="optionB" class="option-btn"></button>
                 <button id="optionC" class="option-btn"></button>
@@ -309,46 +309,7 @@
         const ROBOT_HEIGHT = 70; // Smaller size
         const ROBOT_WIDTH = 40; // Smaller size
 
-        // Hardcoded quiz questions to avoid API dependency
-        let quizQuestions = [
-            {
-                "question": "What is the process by which a plant makes its food?",
-                "options": ["Respiration", "Transpiration", "Photosynthesis", "Germination"],
-                "answer": "Photosynthesis",
-                "part": "left_arm"
-            },
-            {
-                "question": "Which planet is known as the 'Red Planet'?",
-                "options": ["Venus", "Mars", "Jupiter", "Saturn"],
-                "answer": "Mars",
-                "part": "right_arm"
-            },
-            {
-                "question": "How many sides does a hexagon have?",
-                "options": ["4", "5", "6", "7"],
-                "answer": "6",
-                "part": "left_leg"
-            },
-            {
-                "question": "What is the largest organ of the human body?",
-                "options": ["Heart", "Brain", "Liver", "Skin"],
-                "answer": "Skin",
-                "part": "right_leg"
-            },
-            {
-                "question": "What is the product of 12 x 12?",
-                "options": ["120", "132", "144", "156"],
-                "answer": "144",
-                "part": "torso"
-            },
-            {
-                "question": "What is the main source of energy for the Earth?",
-                "options": ["Moon", "Sun", "Stars", "Wind"],
-                "answer": "Sun",
-                "part": "head"
-            }
-        ];
-
+        let quizQuestions = [];
         const robotParts = ["left_arm", "right_arm", "left_leg", "right_leg", "torso", "head"];
         const partsToComplete = 6;
         let currentQuestionIndex = 0;
@@ -371,11 +332,44 @@
 
         const keys = {};
 
+        async function loadQuestions() {
+            try {
+                const response = await fetch('questions.txt');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.text();
+                const lines = data.split('\n').filter(line => line.trim() !== '');
+                
+                if (lines.length === 0) {
+                    throw new Error("questions.txt is empty or improperly formatted.");
+                }
+
+                quizQuestions = lines.map(line => {
+                    const parts = line.split('|');
+                    return {
+                        question: parts[0],
+                        options: parts.slice(1, 5),
+                        answer: parts[5],
+                        part: robotParts[Math.floor(Math.random() * robotParts.length)]
+                    };
+                });
+                
+                questionText.textContent = "Questions loaded!";
+                optionBtns.forEach(btn => btn.disabled = false);
+                return true;
+            } catch (error) {
+                console.error("Failed to load questions:", error);
+                questionText.textContent = `Error: Failed to load questions. Check your files. (${error.message})`;
+                optionBtns.forEach(btn => btn.disabled = true);
+                return false;
+            }
+        }
+
         function showScreen(screenId) {
             screens.forEach(screen => screen.classList.add('hidden'));
             document.getElementById(screenId).classList.remove('hidden');
             
-            // Manage UI visibility based on game state
             if (screenId === 'battle-menu') {
                 uiOverlay.classList.add('hidden');
                 battleUI.classList.remove('hidden');
@@ -404,7 +398,6 @@
                 canvas.height = canvas.width / aspectRatio;
             }
 
-            // Place robots in opposite corners
             player1.x = 50;
             player1.y = canvas.height - ROBOT_HEIGHT - 50;
             
@@ -412,18 +405,26 @@
             aiBot.y = 50;
         }
 
-        function startGame() {
+        async function startGame() {
             resetGame();
-            resizeCanvas();
-            game.state = 'quiz';
             showScreen('quiz-menu');
-            loadQuestion();
+            optionBtns.forEach(btn => btn.disabled = true);
+            const loaded = await loadQuestions();
+            if (loaded) {
+                game.state = 'quiz';
+                loadQuestion();
+            }
         }
 
-        function startArenaImmediately() {
+        async function startArenaImmediately() {
             resetGame();
-            resizeCanvas();
-            startBattleCountdown();
+            showScreen('quiz-menu');
+            questionText.textContent = "Loading questions...";
+            optionBtns.forEach(btn => btn.disabled = true);
+            const loaded = await loadQuestions();
+            if (loaded) {
+                startBattleCountdown();
+            }
         }
 
         function startBattleCountdown() {
@@ -474,10 +475,8 @@
                 player1.readiness = 100;
                 aiBot.readiness = 100;
                 game.state = 'battle';
-
                 player1.health = 100;
                 aiBot.health = 100;
-
                 startBattleCountdown();
             }
         }
@@ -502,7 +501,6 @@
         }
         
         function drawRobot(p) {
-            // Main body with glowing effect
             const glowColor = p.id === 'player1' ? '#4cff4c' : '#ff4c4c';
             ctx.shadowColor = p.isHit ? '#e60000' : glowColor;
             ctx.shadowBlur = 15;
@@ -510,20 +508,16 @@
             ctx.fillRect(p.x, p.y, ROBOT_WIDTH, ROBOT_HEIGHT);
             ctx.shadowBlur = 0;
             
-            // Head
             ctx.fillStyle = '#1a1a1a';
             ctx.fillRect(p.x + ROBOT_WIDTH * 0.25, p.y - 20, ROBOT_WIDTH * 0.5, 20);
             
-            // Shoulders and hips
             ctx.fillStyle = '#2d2d2d';
             ctx.fillRect(p.x - 10, p.y + 10, ROBOT_WIDTH + 20, 10);
             ctx.fillRect(p.x - 10, p.y + ROBOT_HEIGHT - 20, ROBOT_WIDTH + 20, 10);
             
-            // Add a small antenna
             ctx.fillStyle = p.isHit ? '#e60000' : (p.id === 'player1' ? '#238636' : '#2ea043');
             ctx.fillRect(p.x + ROBOT_WIDTH / 2 - 2, p.y - 30, 4, 10);
             
-            // Punching effect
             const punchOffset = p.isAttacking ? 20 : 0;
             const direction = (p.id === 'player1') ? 1 : -1;
             
@@ -619,7 +613,6 @@
                 if (Math.abs(dx) < punchRange && Math.abs(dy) < ROBOT_HEIGHT) {
                     p2.health -= 10;
                     p2.isHit = true;
-                    // Knockback effect
                     p2.x += (p1.x > p2.x) ? -10 : 10;
                     if (p2.hitTimer) clearTimeout(p2.hitTimer);
                     p2.hitTimer = setTimeout(() => p2.isHit = false, 200);
@@ -679,7 +672,7 @@
             playAgainBtn.addEventListener('click', () => {
                 game.state = 'menu';
                 resetGame();
-                resizeCanvas(); // Ensure positions are set for the next game
+                resizeCanvas();
                 showScreen('main-menu');
             });
 
