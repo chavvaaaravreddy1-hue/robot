@@ -263,15 +263,6 @@
             </div>
         </div>
         
-        <div id="loading-menu" class="screen hidden">
-            <h1>Loading Knowledge Modules...</h1>
-            <p>Please wait while your robot downloads the latest questions.</p>
-        </div>
-
-        <div id="battle-menu" class="screen hidden">
-            <h1>FIGHT!</h1>
-        </div>
-
         <div id="game-over-menu" class="screen hidden">
             <h1 id="gameOverText"></h1>
             <p id="finalHealthText"></p>
@@ -315,10 +306,49 @@
         const playerHealthBar = document.getElementById('playerHealthBar');
         const aiHealthBar = document.getElementById('aiHealthBar');
         
-        const ROBOT_HEIGHT = 100;
-        const ROBOT_WIDTH = 60;
+        const ROBOT_HEIGHT = 70; // Smaller size
+        const ROBOT_WIDTH = 40; // Smaller size
 
-        let quizQuestions = [];
+        // Hardcoded quiz questions to avoid API dependency
+        let quizQuestions = [
+            {
+                "question": "What is the process by which a plant makes its food?",
+                "options": ["Respiration", "Transpiration", "Photosynthesis", "Germination"],
+                "answer": "Photosynthesis",
+                "part": "left_arm"
+            },
+            {
+                "question": "Which planet is known as the 'Red Planet'?",
+                "options": ["Venus", "Mars", "Jupiter", "Saturn"],
+                "answer": "Mars",
+                "part": "right_arm"
+            },
+            {
+                "question": "How many sides does a hexagon have?",
+                "options": ["4", "5", "6", "7"],
+                "answer": "6",
+                "part": "left_leg"
+            },
+            {
+                "question": "What is the largest organ of the human body?",
+                "options": ["Heart", "Brain", "Liver", "Skin"],
+                "answer": "Skin",
+                "part": "right_leg"
+            },
+            {
+                "question": "What is the product of 12 x 12?",
+                "options": ["120", "132", "144", "156"],
+                "answer": "144",
+                "part": "torso"
+            },
+            {
+                "question": "What is the main source of energy for the Earth?",
+                "options": ["Moon", "Sun", "Stars", "Wind"],
+                "answer": "Sun",
+                "part": "head"
+            }
+        ];
+
         const robotParts = ["left_arm", "right_arm", "left_leg", "right_leg", "torso", "head"];
         const partsToComplete = 6;
         let currentQuestionIndex = 0;
@@ -382,91 +412,17 @@
             aiBot.y = 50;
         }
 
-        async function fetchQuestions() {
-            showScreen('loading-menu');
-            const systemPrompt = "Act as an expert in Singapore's Primary 4 curriculum. You will generate a list of math and science trivia questions suitable for a game. The questions should be in a specific JSON format.";
-            const userQuery = `Generate ${partsToComplete} multiple-choice trivia questions and answers. The questions should be related to Primary 4 Singapore Maths and Science. Ensure each question has exactly one correct answer and three incorrect options. The output must be a JSON array.`;
-
-            const payload = {
-                contents: [{ parts: [{ text: userQuery }] }],
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }]
-                },
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "ARRAY",
-                        items: {
-                            type: "OBJECT",
-                            properties: {
-                                "question": { "type": "STRING" },
-                                "options": {
-                                    "type": "ARRAY",
-                                    "items": { "type": "STRING" }
-                                },
-                                "answer": { "type": "STRING" }
-                            },
-                            "propertyOrdering": ["question", "options", "answer"]
-                        }
-                    }
-                }
-            };
-
-            const apiKey = ""; 
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) {
-                    throw new Error(`API call failed with status: ${response.status}`);
-                }
-
-                const result = await response.json();
-                const json = result?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!json) {
-                    throw new Error('No valid JSON content in API response.');
-                }
-                const parsedQuestions = JSON.parse(json);
-
-                if (Array.isArray(parsedQuestions) && parsedQuestions.length > 0) {
-                    quizQuestions = parsedQuestions.map((q, index) => ({
-                        ...q,
-                        part: robotParts[index]
-                    }));
-                } else {
-                    throw new Error('Generated questions are not in the expected array format.');
-                }
-            } catch (error) {
-                console.error("Failed to fetch questions:", error);
-                showAlert("Failed to download new questions. Please try again.");
-                quizQuestions = []; // Reset questions to prevent starting with an empty array
-            } finally {
-                setTimeout(() => {
-                    if (quizQuestions.length > 0) {
-                        showScreen('quiz-menu');
-                        loadQuestion();
-                    } else {
-                        showScreen('main-menu');
-                    }
-                }, 1000); // Give a brief moment for the user to see the loading screen
-            }
-        }
-
         function startGame() {
             resetGame();
-            resizeCanvas(); // Ensure positions are set correctly after reset
+            resizeCanvas();
             game.state = 'quiz';
-            fetchQuestions();
+            showScreen('quiz-menu');
+            loadQuestion();
         }
 
         function startArenaImmediately() {
             resetGame();
-            resizeCanvas(); // Ensure positions are set correctly after reset
+            resizeCanvas();
             startBattleCountdown();
         }
 
