@@ -208,6 +208,17 @@
             font-weight: bold;
             color: #238636;
         }
+        
+        #countdown-timer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 5em;
+            color: #238636;
+            text-shadow: 0 0 15px #238636;
+            z-index: 10;
+        }
     </style>
 </head>
 <body>
@@ -234,7 +245,8 @@
         <div id="main-menu" class="screen">
             <h1>Robot Battle</h1>
             <p>Ready to fight?</p>
-            <button id="newGameBtn">New Game</button>
+            <button id="answerQuestionsBtn">Answer Questions</button>
+            <button id="enterArenaBtn">Enter Arena</button>
         </div>
 
         <div id="quiz-menu" class="screen hidden">
@@ -249,6 +261,11 @@
                 <button id="optionC" class="option-btn"></button>
                 <button id="optionD" class="option-btn"></button>
             </div>
+        </div>
+        
+        <div id="loading-menu" class="screen hidden">
+            <h1>Loading Knowledge Modules...</h1>
+            <p>Please wait while your robot downloads the latest questions.</p>
         </div>
 
         <div id="battle-menu" class="screen hidden">
@@ -266,6 +283,8 @@
         <p id="alert-message"></p>
         <button id="alert-close-btn">OK</button>
     </div>
+    
+    <div id="countdown-timer" class="hidden"></div>
 
     <script>
         // Game State and Variables
@@ -281,13 +300,15 @@
         const alertModal = document.getElementById('alert-modal');
         const alertMessage = document.getElementById('alert-message');
         const alertCloseBtn = document.getElementById('alert-close-btn');
+        const countdownTimer = document.getElementById('countdown-timer');
         
         // UI elements
-        const newGameBtn = document.getElementById('newGameBtn');
+        const answerQuestionsBtn = document.getElementById('answerQuestionsBtn');
+        const enterArenaBtn = document.getElementById('enterArenaBtn');
         const questionText = document.getElementById('questionText');
         const optionBtns = document.querySelectorAll('.option-btn');
         const progressBar = document.getElementById('robotProgressBar');
-        const gameOverText = document = document.getElementById('gameOverText');
+        const gameOverText = document.getElementById('gameOverText');
         const finalHealthText = document.getElementById('finalHealthText');
         const playAgainBtn = document.getElementById('playAgainBtn');
 
@@ -296,49 +317,11 @@
         
         const ROBOT_HEIGHT = 100;
         const ROBOT_WIDTH = 60;
-        const GROUND_Y_OFFSET = 0.8; // 80% of canvas height
 
-        const quizQuestions = [
-            {
-                question: "Math: What is the sum of the prime numbers between 10 and 20?",
-                options: ["28", "37", "41", "48"],
-                answer: "41",
-                part: "left_arm"
-            },
-            {
-                question: "Science: What process do plants use to make their own food?",
-                options: ["Respiration", "Photosynthesis", "Digestion", "Transpiration"],
-                answer: "Photosynthesis",
-                part: "right_arm"
-            },
-            {
-                question: "Math: A rectangular field is 15m long and 8m wide. What is its perimeter?",
-                options: ["23m", "46m", "120m", "42m"],
-                answer: "46m",
-                part: "left_leg"
-            },
-            {
-                question: "Science: Which state of matter has a fixed shape and volume?",
-                options: ["Solid", "Liquid", "Gas", "Plasma"],
-                answer: "Solid",
-                part: "right_leg"
-            },
-            {
-                question: "Math: Find the value of 5 x (12 - 7) + 3.",
-                options: ["28", "38", "50", "13"],
-                answer: "28",
-                part: "torso"
-            },
-            {
-                question: "Science: What is the main source of energy for the water cycle?",
-                options: ["Wind", "Moonlight", "Sunlight", "Gravity"],
-                answer: "Sunlight",
-                part: "head"
-            },
-        ];
-
+        let quizQuestions = [];
+        const robotParts = ["left_arm", "right_arm", "left_leg", "right_leg", "torso", "head"];
+        const partsToComplete = 6;
         let currentQuestionIndex = 0;
-        const partsToComplete = quizQuestions.length;
         
         const PLAYER_STATE = {
             id: '',
@@ -349,8 +332,6 @@
             parts: [],
             isAttacking: false,
             lastAttackTime: 0,
-            yVelocity: 0,
-            isJumping: false,
             isHit: false,
             hitTimer: null
         };
@@ -393,17 +374,128 @@
                 canvas.height = canvas.width / aspectRatio;
             }
 
-            player1.x = canvas.width / 4;
-            aiBot.x = canvas.width * 3 / 4;
-            player1.y = canvas.height * GROUND_Y_OFFSET - ROBOT_HEIGHT;
-            aiBot.y = canvas.height * GROUND_Y_OFFSET - ROBOT_HEIGHT;
+            // Place robots in opposite corners
+            player1.x = 50;
+            player1.y = canvas.height - ROBOT_HEIGHT - 50;
+            
+            aiBot.x = canvas.width - ROBOT_WIDTH - 50;
+            aiBot.y = 50;
+        }
+
+        async function fetchQuestions() {
+            showScreen('loading-menu');
+            const systemPrompt = "Act as an expert in Singapore's Primary 4 curriculum. You will generate a list of math and science trivia questions suitable for a game. The questions should be in a specific JSON format.";
+            const userQuery = `Generate ${partsToComplete} multiple-choice trivia questions and answers. The questions should be related to Primary 4 Singapore Maths and Science. Ensure each question has exactly one correct answer and three incorrect options. The output must be a JSON array.`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "ARRAY",
+                        items: {
+                            type: "OBJECT",
+                            properties: {
+                                "question": { "type": "STRING" },
+                                "options": {
+                                    "type": "ARRAY",
+                                    "items": { "type": "STRING" }
+                                },
+                                "answer": { "type": "STRING" }
+                            },
+                            "propertyOrdering": ["question", "options", "answer"]
+                        }
+                    }
+                }
+            };
+
+            const apiKey = ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API call failed with status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const json = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!json) {
+                    throw new Error('No valid JSON content in API response.');
+                }
+                const parsedQuestions = JSON.parse(json);
+
+                if (Array.isArray(parsedQuestions) && parsedQuestions.length > 0) {
+                    quizQuestions = parsedQuestions.map((q, index) => ({
+                        ...q,
+                        part: robotParts[index]
+                    }));
+                } else {
+                    throw new Error('Generated questions are not in the expected array format.');
+                }
+            } catch (error) {
+                console.error("Failed to fetch questions:", error);
+                showAlert("Failed to download new questions. Please try again.");
+                quizQuestions = []; // Reset questions to prevent starting with an empty array
+            } finally {
+                setTimeout(() => {
+                    if (quizQuestions.length > 0) {
+                        showScreen('quiz-menu');
+                        loadQuestion();
+                    } else {
+                        showScreen('main-menu');
+                    }
+                }, 1000); // Give a brief moment for the user to see the loading screen
+            }
         }
 
         function startGame() {
-            game.state = 'quiz';
             resetGame();
-            showScreen('quiz-menu');
-            loadQuestion();
+            resizeCanvas(); // Ensure positions are set correctly after reset
+            game.state = 'quiz';
+            fetchQuestions();
+        }
+
+        function startArenaImmediately() {
+            resetGame();
+            resizeCanvas(); // Ensure positions are set correctly after reset
+            startBattleCountdown();
+        }
+
+        function startBattleCountdown() {
+            uiOverlay.classList.add('hidden');
+            countdownTimer.classList.remove('hidden');
+            let count = 3;
+            countdownTimer.textContent = count;
+
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownTimer.textContent = count;
+                } else if (count === 0) {
+                    countdownTimer.textContent = 'FIGHT!';
+                } else {
+                    clearInterval(timer);
+                    countdownTimer.classList.add('hidden');
+                    game.state = 'battle';
+                    showScreen('battle-menu');
+                    player1.readiness = 100;
+                    aiBot.readiness = 100;
+                    player1.health = 100;
+                    aiBot.health = 100;
+                    player1.parts = [...robotParts];
+                    aiBot.parts = [...robotParts];
+                    updateHealthBars();
+                }
+            }, 1000);
         }
 
         function updateHealthBars() {
@@ -411,7 +503,6 @@
             aiHealthBar.style.width = `${aiBot.health}%`;
         }
 
-        // This function loads the next question from the quizQuestions array.
         function loadQuestion() {
             if (currentQuestionIndex < quizQuestions.length) {
                 const q = quizQuestions[currentQuestionIndex];
@@ -420,7 +511,6 @@
                 const options = [...q.options];
                 options.sort(() => Math.random() - 0.5);
 
-                // Populate the buttons with the shuffled options
                 for(let i = 0; i < optionBtns.length; i++) {
                     optionBtns[i].textContent = options[i];
                 }
@@ -428,11 +518,11 @@
                 player1.readiness = 100;
                 aiBot.readiness = 100;
                 game.state = 'battle';
-                showAlert("Your robot is 100% ready! Entering the fighting arena!");
-                setTimeout(() => {
-                    showScreen('battle-menu');
-                    updateHealthBars();
-                }, 2000);
+
+                player1.health = 100;
+                aiBot.health = 100;
+
+                startBattleCountdown();
             }
         }
 
@@ -456,40 +546,59 @@
         }
         
         function drawRobot(p) {
+            // Main body with glowing effect
+            const glowColor = p.id === 'player1' ? '#4cff4c' : '#ff4c4c';
+            ctx.shadowColor = p.isHit ? '#e60000' : glowColor;
+            ctx.shadowBlur = 15;
             ctx.fillStyle = p.isHit ? '#e60000' : (p.id === 'player1' ? '#238636' : '#2ea043');
+            ctx.fillRect(p.x, p.y, ROBOT_WIDTH, ROBOT_HEIGHT);
+            ctx.shadowBlur = 0;
             
-            const bodyY = p.y;
-            const bodyX = p.x;
-
-            ctx.fillRect(bodyX, bodyY, ROBOT_WIDTH, ROBOT_HEIGHT * 0.4);
-            ctx.fillRect(bodyX + ROBOT_WIDTH / 4, bodyY - 30, ROBOT_WIDTH / 2, 30);
+            // Head
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(p.x + ROBOT_WIDTH * 0.25, p.y - 20, ROBOT_WIDTH * 0.5, 20);
             
+            // Shoulders and hips
+            ctx.fillStyle = '#2d2d2d';
+            ctx.fillRect(p.x - 10, p.y + 10, ROBOT_WIDTH + 20, 10);
+            ctx.fillRect(p.x - 10, p.y + ROBOT_HEIGHT - 20, ROBOT_WIDTH + 20, 10);
+            
+            // Add a small antenna
+            ctx.fillStyle = p.isHit ? '#e60000' : (p.id === 'player1' ? '#238636' : '#2ea043');
+            ctx.fillRect(p.x + ROBOT_WIDTH / 2 - 2, p.y - 30, 4, 10);
+            
+            // Punching effect
             const punchOffset = p.isAttacking ? 20 : 0;
-
+            const direction = (p.id === 'player1') ? 1 : -1;
+            
             if (p.parts.includes("left_arm")) {
-                ctx.fillRect(bodyX - 20 - punchOffset, bodyY + 10, 20, 50);
+                ctx.fillStyle = '#2d2d2d';
+                ctx.fillRect(p.x - 10 - punchOffset * direction, p.y + 10, 10, 50);
             }
             if (p.parts.includes("right_arm")) {
-                ctx.fillRect(bodyX + ROBOT_WIDTH + punchOffset, bodyY + 10, 20, 50);
+                ctx.fillStyle = '#2d2d2d';
+                ctx.fillRect(p.x + ROBOT_WIDTH + punchOffset * direction, p.y + 10, 10, 50);
             }
             if (p.parts.includes("left_leg")) {
-                ctx.fillRect(bodyX + 5, bodyY + ROBOT_HEIGHT * 0.4, 20, 50);
+                ctx.fillStyle = '#2d2d2d';
+                ctx.fillRect(p.x + 5, p.y + ROBOT_HEIGHT, 15, 50);
             }
             if (p.parts.includes("right_leg")) {
-                ctx.fillRect(bodyX + ROBOT_WIDTH - 25, bodyY + ROBOT_HEIGHT * 0.4, 20, 50);
+                ctx.fillStyle = '#2d2d2d';
+                ctx.fillRect(p.x + ROBOT_WIDTH - 20, p.y + ROBOT_HEIGHT, 15, 50);
             }
             if (p.parts.includes("torso")) {
-                ctx.fillRect(bodyX - 10, bodyY + ROBOT_HEIGHT * 0.4 - 5, ROBOT_WIDTH + 20, 10);
+                ctx.fillStyle = p.isHit ? '#e60000' : (p.id === 'player1' ? '#238636' : '#2ea043');
+                ctx.fillRect(p.x, p.y + 40, ROBOT_WIDTH, 20);
             }
             if (p.parts.includes("head")) {
-                ctx.fillRect(bodyX + 15, bodyY - 40, 30, 10);
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fillRect(p.x + ROBOT_WIDTH * 0.25, p.y - 20, ROBOT_WIDTH * 0.5, 20);
             }
         }
 
         function handleInput(p) {
             const speed = 5;
-            const jumpPower = -15;
-            const groundY = canvas.height * GROUND_Y_OFFSET - ROBOT_HEIGHT;
 
             if (keys['ArrowLeft']) {
                 p.x -= speed;
@@ -497,22 +606,15 @@
             if (keys['ArrowRight']) {
                 p.x += speed;
             }
-            if (keys['ArrowUp'] && !p.isJumping) {
-                p.yVelocity = jumpPower;
-                p.isJumping = true;
+            if (keys['ArrowUp']) {
+                p.y -= speed;
             }
-            p.x = Math.max(0, Math.min(canvas.width - ROBOT_WIDTH, p.x));
-            
-            if (p.isJumping) {
-                p.y += p.yVelocity;
-                p.yVelocity += 0.5; // Gravity
+            if (keys['ArrowDown']) {
+                p.y += speed;
             }
 
-            if (p.y >= groundY) {
-                p.y = groundY;
-                p.isJumping = false;
-                p.yVelocity = 0;
-            }
+            p.x = Math.max(0, Math.min(canvas.width - ROBOT_WIDTH, p.x));
+            p.y = Math.max(0, Math.min(canvas.height - ROBOT_HEIGHT, p.y));
             
             if (keys[' '] && Date.now() - p.lastAttackTime > 500) {
                 p.isAttacking = true;
@@ -524,18 +626,22 @@
         function handleAI() {
             const player = player1;
             const ai = aiBot;
-            const distance = player.x - ai.x;
-            const groundY = canvas.height * GROUND_Y_OFFSET - ROBOT_HEIGHT;
-
+            const distanceX = player.x - ai.x;
+            const distanceY = player.y - ai.y;
+            const aiSpeed = 1.5;
+            
             if (ai.readiness < 100) {
                 ai.readiness += 0.1;
                 const parts = Math.floor(ai.readiness / (100 / partsToComplete));
-                ai.parts = quizQuestions.slice(0, parts).map(q => q.part);
+                ai.parts = robotParts.slice(0, parts);
             }
             
             if (game.state === 'battle') {
-                if (Math.abs(distance) > 100) {
-                    ai.x += distance > 0 ? 2 : -2;
+                if (Math.abs(distanceX) > 5) {
+                    ai.x += distanceX > 0 ? aiSpeed : -aiSpeed;
+                }
+                if (Math.abs(distanceY) > 5) {
+                    ai.y += distanceY > 0 ? aiSpeed : -aiSpeed;
                 } else {
                     if (Date.now() - ai.lastAttackTime > 1000) {
                         ai.isAttacking = true;
@@ -544,30 +650,17 @@
                     }
                 }
                 
-                if (Math.random() < 0.005 && !ai.isJumping) {
-                    ai.yVelocity = -15;
-                    ai.isJumping = true;
-                }
-
-                if (ai.isJumping) {
-                    ai.y += ai.yVelocity;
-                    ai.yVelocity += 0.5;
-                }
-
-                if (ai.y >= groundY) {
-                    ai.y = groundY;
-                    ai.isJumping = false;
-                    ai.yVelocity = 0;
-                }
-                
                 ai.x = Math.max(0, Math.min(canvas.width - ROBOT_WIDTH, ai.x));
+                ai.y = Math.max(0, Math.min(canvas.height - ROBOT_HEIGHT, ai.y));
             }
         }
 
         function checkCollision(p1, p2) {
             const punchRange = 100;
             if (p1.isAttacking && Date.now() - p1.lastAttackTime < 100) {
-                if (Math.abs(p1.x - p2.x) < punchRange && Math.abs(p1.y - p2.y) < ROBOT_HEIGHT) {
+                const dx = p1.x - p2.x;
+                const dy = p1.y - p2.y;
+                if (Math.abs(dx) < punchRange && Math.abs(dy) < ROBOT_HEIGHT) {
                     p2.health -= 10;
                     p2.isHit = true;
                     // Knockback effect
@@ -593,7 +686,6 @@
         }
 
         function resetGame() {
-            game.state = 'menu';
             Object.assign(player1, PLAYER_STATE, { id: 'player1' });
             Object.assign(aiBot, PLAYER_STATE, { id: 'aiBot' });
             currentQuestionIndex = 0;
@@ -609,6 +701,7 @@
             if (game.state === 'battle') {
                 handleInput(player1);
                 handleAI();
+                
                 checkCollision(player1, aiBot);
                 checkCollision(aiBot, player1);
 
@@ -620,14 +713,17 @@
         }
         
         function setupEventListeners() {
-            newGameBtn.addEventListener('click', startGame);
+            answerQuestionsBtn.addEventListener('click', startGame);
+            enterArenaBtn.addEventListener('click', startArenaImmediately);
             
             optionBtns.forEach(btn => btn.addEventListener('click', (e) => checkAnswer(e.target.textContent)));
             
             alertCloseBtn.addEventListener('click', () => alertModal.classList.add('hidden'));
 
             playAgainBtn.addEventListener('click', () => {
+                game.state = 'menu';
                 resetGame();
+                resizeCanvas(); // Ensure positions are set for the next game
                 showScreen('main-menu');
             });
 
